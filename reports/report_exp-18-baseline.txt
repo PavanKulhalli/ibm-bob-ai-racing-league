@@ -1,0 +1,100 @@
+========================================================================
+  find_corners.py — Corner & Braking Analysis
+  Experiment: exp-18 (stable baseline — hand-written from CHANGELOG.md)
+  This report was written before lap_data.csv existed.
+  Future reports will be generated automatically by find_corners.py.
+========================================================================
+
+LAP SUMMARY (from CHANGELOG.md — exp-15, the last confirmed clean lap
+             with identical braking settings to exp-18)
+------------------------------------------------------------------------
+  exp_tag         lap   lap_time    top_spd   avg_spd   dmg_Δ   ok?
+  -----------     ---   ---------   -------   -------   -----   -------
+  exp-15           1    2:21.240    208.0     ~130      0       ✓
+  exp-18           *    (pending first run)                     TBD
+
+  exp-17 (last run before exp-18 was adopted):
+    Run 1: DNF at 1:16.160, damage 637  — quadratic steer too aggressive
+    Run 2: DNF after 1:31.240, damage 0 — quadratic steer destabilised
+                                          car on back straight after hairpin
+
+
+BRAKING ZONES (from observation — no CSV data yet)
+------------------------------------------------------------------------
+  The known crash locations from exp-13 through exp-17 are all on the
+  back half of the circuit (post-hairpin high-speed section).
+
+  Key braking points identified from CHANGELOG footage notes:
+    ~dist 350–420 m  : Corkscrew entry — has caused crashes in exp-7,
+                       exp-8 (damage 6), exp-13
+    ~dist 600–650 m  : Fast right-hander at lap start — wide exits noted
+                       in exp-15 footage
+    ~dist 700–750 m  : Hairpin complex top-left — false reversal site in
+                       exp-16, fixed by exp-17 gate
+
+
+TIGHT CORNERS (ahead < 30 m — from CHANGELOG observations)
+------------------------------------------------------------------------
+  1. Hairpin apex (~dist 700 m)
+       exp-12 fix: ±4° sensor cone prevents target_speed collapsing here.
+       exp-16/17: track[9] < 2.0 was falsely triggering reversal here.
+       Status: FIXED by exp-17 gate (abs(trackPos) > 0.85 required).
+
+  2. Corkscrew entry (~dist 370 m)
+       Braking zone. Has caused damage when decel_g was too high.
+       Status: MANAGED by decel_g=16, margin=0.88.
+
+
+DAMAGE EVENTS (from CHANGELOG — no CSV data yet)
+------------------------------------------------------------------------
+  exp-17 Run 1:  dist ~unknown, speed ~177 km/h,  damage 637
+                 Location: fast sweeper on back straight (pre-hairpin)
+                 Cause: quadratic centre-pull (exp-16 term) over-corrected
+                 Fix applied: exp-18 reverts to linear tp*0.25 only
+
+  exp-15:        0 damage events — clean lap
+  exp-18:        0 damage events expected (same braking as exp-15 +
+                 safer off-track gate from exp-17)
+
+
+SPEED PROFILE (estimated from CHANGELOG top-speed figures)
+------------------------------------------------------------------------
+  All experiments with decel_g=16 / margin=0.88:
+    Top speed observed:  207–208 km/h
+    Lap time (exp-15):   2:21.240 — conservative, car brakes early
+    Estimated avg speed: ~130 km/h (consistent with 2:21 lap time on
+                         this circuit length)
+
+  Comparison:
+    exp-9  (decel_g=15, margin=0.91): top 197, lap 2:01.990
+    exp-10 (decel_g=15, margin=0.92): top 198, lap 2:02.880
+    exp-15 (decel_g=16, margin=0.88): top 208, lap 2:21.240
+    → exp-15/18 brakes earlier (conservative margin) but reaches higher
+      top speed. Time is slower because it brakes more conservatively.
+
+
+SUGGESTED NEXT EXPERIMENT
+------------------------------------------------------------------------
+  exp-18 is the current stable baseline. The recommended next step is:
+
+    Nudge margin 0.88 → 0.89 (one step toward exp-9's proven 0.91).
+
+  Change in snakeoil3_v2.py:
+    target_speed = clip(safe_kmh * 0.89, 10, 250)   # was 0.88
+
+  Update EXP_TAG:
+    EXP_TAG = "exp-19-margin089"
+
+  Expected outcome:
+    - Lap time: improvement from 2:21 toward 2:18–2:19
+    - Damage: 0 (0.89 is well below the 0.91 that was clean in exp-9)
+    - Top speed: marginal increase (~209 km/h)
+
+  If clean → promote to snakeoil3_v1.py, then try 0.89 → 0.90.
+  If damage > 0 → revert to 0.88, investigate crash location in
+                  lap_data.csv using find_corners.py.
+
+------------------------------------------------------------------------
+  Generated: 2024-10-08 (hand-written — no CSV data available yet)
+  Source: CHANGELOG.md experiments v1-experiment-15 through v1-experiment-18
+========================================================================
