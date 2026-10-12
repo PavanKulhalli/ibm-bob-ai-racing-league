@@ -1834,3 +1834,255 @@ throttle_band = 0.10         # restore exp-37 value (was 6% in exp-38)
 - Run 4 confirmed the `lap_data.csv.gz` header fix — recorder wrote 5,451 rows to gz without error; file grew 3.6 → 3.9 MB.
 - Recorder still logs all runs as `partial` — `distRaced` becomes non-monotonic during Zone A recovery near the finish line. TORCS race-results screen remains authoritative. This is a known limitation (see Enhancement 2 in README).
 - **exp-39 is the confirmed stable baseline.** 4 consecutive clean laps across both v1 and v2.
+
+---
+
+### v1-experiment-40 — Raise safety margin 0.89 → 0.92 (top-speed lever)
+
+**File:** `snakeoil3_v2.py`  
+**EXP_TAG:** `exp-40-margin-092`
+
+**Motivation:** exp-39 stabilised at ~202–206 km/h top speed across four clean laps. The only change from the exp-37 baseline that raised top speed above 209 km/h in the historical record was exp-13, which ran margin 0.92 (among three other changes) and observed 219 km/h. This experiment isolates that single variable to attribute the result cleanly. All zone caps, sensor, decel_g, and steering are unchanged from exp-39.
+
+**Change made:**
+```python
+# Before (exp-39):
+target_speed = clip(safe_kmh * 0.89, 10, 250)
+
+# After (exp-40):
+target_speed = clip(safe_kmh * 0.92, 10, 250)
+```
+
+**Prediction:**
+- Top speed: rises from ~204 km/h toward ~215–220 km/h
+- Damage: 0 (zone caps still protect A/B/C)
+- Lap time: faster than exp-39 (~01:53–01:54)
+- Risk: higher entry speed on fast sweepers where zone caps do not apply; if understeer appears, raise `decel_g` as next step
+
+| Metric | Before (exp-39 avg) | Run 1 |
+|---|---|---|
+| Lap time | ~01:54:90 | **01:53:66** ✅ |
+| Damage | 0 | **0** ✅ |
+| Top speed | ~204 km/h | **210 km/h** ✅ |
+| **Kept?** | | **Yes — clean lap, +6 km/h top speed, lap time −1:24 s vs exp-39 avg** |
+
+**Observations:**
+- Clean lap, 0 damage. Top speed 210 km/h — +6 km/h vs exp-39 average (204 km/h), +1 km/h vs exp-39 best (209 km/h).
+- Lap time 01:53:66 — fastest recorded lap to date (exp-39 best was 01:54:60).
+- Zone caps held correctly: no damage at Corkscrew (Zone A), exit chicane (Zone C), or back hairpin (Zone B).
+- margin 0.92 is safe with the current cap configuration. Further top-speed headroom available via decel_g if needed.
+
+---
+
+### v1-experiment-41 — decel_g 16 → 17 + margin 0.92 → 0.95 (push toward 220 km/h)
+
+**File:** `snakeoil3_v2.py`  
+**EXP_TAG:** `exp-41-decelg17-margin095`
+
+**Motivation:** exp-40 (margin 0.92, decel_g 16) delivered 210 km/h and a clean 01:53:66 lap — the fastest to date. Two remaining levers can push further: (1) `decel_g 16 → 17` fires the brake trigger later on straights, giving more time at full throttle; (2) `margin 0.92 → 0.95` lets target_speed chase closer to the sensor ceiling. Applied together because both act only on straight-line speed and the zone caps (unchanged) still guard all three dangerous corners. Historical crash risk from exp-13/14 (`decel_g=17`, `margin=0.93`, DNF) does not apply here — those runs had no zone caps; the caps are what make this envelope safe.
+
+**Changes made:**
+```python
+# Before (exp-40):
+decel_g      = 16.0
+target_speed = clip(safe_kmh * 0.92, 10, 250)
+
+# After (exp-41):
+decel_g      = 17.0
+target_speed = clip(safe_kmh * 0.95, 10, 250)
+```
+
+**Prediction:**
+- Top speed: rises from 210 km/h toward 218–223 km/h
+- Damage: 0 (zone caps unchanged; caps are the protection on the three problem corners)
+- Lap time: faster than exp-40's 01:53:66
+- Risk: if fast sweepers (where no cap applies) produce understeer, revert decel_g first
+
+| Metric | Before (exp-40) | Run 1 |
+|---|---|---|
+| Lap time | 01:53:66 | **01:51:18** ✅ |
+| Damage | 0 | **0** ✅ |
+| Top speed | 210 km/h | **216 km/h** ✅ |
+| **Kept?** | | **Yes — clean lap, +6 km/h top speed, fastest lap to date** |
+
+**Observations:**
+- Clean lap, 0 damage. Top speed 216 km/h — +6 km/h vs exp-40 (210 km/h), fastest lap to date.
+- Lap time 01:51:18 — 2:48 s faster than exp-40 (01:53:66), 3:24 s faster than exp-39 best (01:54:66).
+- Zone caps held perfectly. decel_g=17 + margin=0.95 is safe with the current cap configuration.
+- Straight-line speed envelope still has headroom; advancing to exp-42 (decel_g=18, margin=0.97).
+
+---
+
+### v1-experiment-42 — decel_g 17 → 18 + margin 0.95 → 0.97 (push toward 220+ km/h)
+
+**File:** `snakeoil3_v2.py`  
+**EXP_TAG:** `exp-42-decelg18-margin097`
+
+**Motivation:** exp-41 (decel_g=17, margin=0.95) delivered 216 km/h and 01:51:18 — clean, 0 damage. Continuing the same progression: `decel_g 17 → 18` fires the brake trigger even later on straights; `margin 0.95 → 0.97` brings target_speed within 3% of the sensor ceiling. Historical risk: exp-14 crashed with decel_g=18, but that run had no zone caps and broken recovery logic. Both are fixed. Zone caps (A/B/C) unchanged.
+
+**Changes made:**
+```python
+# Before (exp-41):
+decel_g      = 17.0
+target_speed = clip(safe_kmh * 0.95, 10, 250)
+
+# After (exp-42):
+decel_g      = 18.0
+target_speed = clip(safe_kmh * 0.97, 10, 250)
+```
+
+**Prediction:**
+- Top speed: rises from 216 km/h toward 220–225 km/h
+- Damage: 0 (zone caps unchanged)
+- Lap time: faster than exp-41's 01:51:18
+- Risk: fast sweepers (no cap applied) — if understeer appears, revert decel_g to 17 first
+
+| Metric | Before (exp-41) | Run 1 |
+|---|---|---|
+| Lap time | 01:51:18 | **DNF — stalled mid-lap at ~39 s** ❌ |
+| Damage | 0 | **0** |
+| Top speed | 216 km/h | **189 km/h** ❌ |
+| **Kept?** | | **No — decel_g=18 too aggressive; advanced to exp-43 (revert decel_g→17, keep margin=0.97)** |
+
+**Observations:**
+- Car ran for ~39 s, reached 189 km/h, then stopped mid-lap with damage 0 — not a crash, a stall.
+- Root cause: decel_g=18 delays the brake trigger so far that a brief low `ahead` reading (kink/apex)
+  causes emergency braking from ~189 km/h to near zero. Once stopped on track with yaw > 0.3 rad,
+  the yaw-recovery branch locks the car in place and it cannot restart.
+- decel_g=18 is confirmed as the ceiling with the current wide-cone sensor — 17 is the safe maximum.
+- margin=0.97 was not cleanly tested in isolation; exp-43 keeps it with decel_g reverted to 17.
+
+---
+
+### v1-experiment-43 — Revert decel_g 18 → 17; keep margin 0.97 (isolate failure cause)
+
+**File:** `snakeoil3_v2.py`
+**EXP_TAG:** `exp-43-decelg17-margin097`
+
+**Motivation:** exp-42 stalled mid-lap: decel_g=18 brakes too hard from a brief low sensor reading, dropping speed to near zero and triggering yaw-recovery lock. Reverting decel_g to 17 (proven clean in exp-41) while keeping margin=0.97 isolates whether margin alone at this level is safe.
+
+**Change made:**
+```python
+# Before (exp-42):
+decel_g      = 18.0
+target_speed = clip(safe_kmh * 0.97, 10, 250)
+
+# After (exp-43):
+decel_g      = 17.0   # reverted — 18 causes mid-lap stall
+target_speed = clip(safe_kmh * 0.97, 10, 250)  # kept
+```
+
+**Prediction:**
+- Top speed: ~216–219 km/h (decel_g=17 + margin=0.97 vs exp-41's 0.95)
+- Damage: 0
+- Lap time: ~01:51 or faster
+- If DNF again: margin=0.97 is also too high; revert to 0.95 (exp-41 proven safe)
+
+| Metric | Before (exp-42) | Run 1 |
+|---|---|---|
+| Lap time | DNF | **01:50:61** ✅ |
+| Damage | 0 | **0** ✅ |
+| Top speed | 189 km/h (stalled) | **218 km/h** ✅ |
+| **Kept?** | | **Yes — clean lap, new fastest, confirmed decel_g=18 was sole failure cause** |
+
+**Observations:**
+- Clean lap, 0 damage. Top speed 218 km/h — +2 km/h vs exp-41 (216 km/h). Lap time 01:50:61 — new fastest.
+- Confirms decel_g=18 was the sole cause of exp-42's stall; margin=0.97 is safe with decel_g=17.
+- margin 0.97 vs 0.95 added only +2 km/h — margin is approaching its ceiling; sensor width is the next lever.
+- Advancing to exp-44: widen sensor cone t[6:15] → t[5:16] to raise safe_kmh on sweepers without touching decel_g/margin.
+
+---
+
+### v1-experiment-44 — Widen sensor cone t[6:15] → t[5:16] (more straight-line clearance)
+
+**File:** `snakeoil3_v2.py`
+**EXP_TAG:** `exp-44-widercone-5to16`
+
+**Motivation:** margin and decel_g levers are near their ceilings (decel_g=18 stalls; margin=0.97 adds only +2 km/h). The upstream lever is `ahead`: widening the cone from ±4° (indices 6–14) to ±7° (indices 5–15) gives higher `ahead` readings on gentle sweepers where the road curves away from the car's centreline, raising `safe_kmh` and thus `target_speed` on those sections. On full straights all sensors read ~200 m so there's no change. Zone caps remain distance-gated and are unaffected by sensor width.
+
+**Change made:**
+```python
+# Before (exp-43):
+ahead = max(max(t[6:15]), 0.0)   # ±4° wide cone
+
+# After (exp-44):
+ahead = max(max(t[5:16]), 0.0)   # ±7° wider cone
+```
+
+**Prediction:**
+- Top speed: rises toward 220–225 km/h (sweeper sections get higher ahead → less braking)
+- Damage: 0 (zone caps still guard A/B/C; those are distance-gated, not sensor-gated)
+- Lap time: faster than exp-43's 01:50:61
+- Risk: if a sweeper outside the zone caps now over-reads clearance and causes understeer, revert cone to t[6:15]
+
+| Metric | Before (exp-43) | Run 1 |
+|---|---|---|
+| Lap time | 01:50:61 | **01:48:59** ✅ |
+| Damage | 0 | **0** ✅ |
+| Top speed | 218 km/h | **228 km/h** ✅ |
+| **Kept?** | | **Yes — clean lap, +10 km/h top speed, new fastest by 2 s** |
+
+**Observations:**
+- Clean lap, 0 damage. Top speed 228 km/h — +10 km/h vs exp-43 (218 km/h). Largest single-step gain recorded.
+- Lap time 01:48:59 — 2:02 s faster than exp-43 (01:50:61).
+- Wider cone (t[5:16]) raises `ahead` on gentle sweepers, allowing higher `target_speed` through those sections.
+- Zone caps held perfectly — distance-gated, sensor width does not affect A/B/C protection.
+- Cone width is a high-leverage lever; advancing to exp-45 (widen further to t[4:17], adding ±12°).
+
+---
+
+### v1-experiment-45 — Widen sensor cone t[5:16] → t[4:17] (±12° cone)
+
+**File:** `snakeoil3_v2.py`  
+**EXP_TAG:** `exp-45-widercone-4to17`
+
+**Motivation:** exp-44 (t[5:16], ±7° cone) delivered +10 km/h and 01:48:59 — the largest single-step gain in the project. Cone width is now the primary lever. Widening one more step to t[4:17] adds the ±12° sensors (indices 4 and 16), raising `ahead` further on fast sweepers. Zone caps (A/B/C) are distance-gated and unaffected. decel_g=17, margin=0.97 unchanged.
+
+**Change made:**
+```python
+# Before (exp-44):
+ahead = max(max(t[5:16]), 0.0)   # ±7° cone
+
+# After (exp-45):
+ahead = max(max(t[4:17]), 0.0)   # ±12° cone
+```
+
+**Prediction:**
+- Top speed: rises from 228 km/h toward 232–238 km/h
+- Damage: 0 (zone caps unchanged; risk is tight corners *outside* the caps)
+- Lap time: faster than exp-44's 01:48:59
+- Risk: ±12° sensors on tight off-cap corners may over-read clearance → understeer → damage; revert to t[5:16] if so
+
+| Metric | Before (exp-44) | Run 1 |
+|---|---|---|
+| Lap time | 01:48:59 | **DNF — stalled mid-lap at ~32 s** ❌ |
+| Damage | 0 | **0** |
+| Top speed | 228 km/h | **189 km/h** ❌ |
+| **Kept?** | | **No — ±12° cone over-reads on tight off-cap sections; reverted to t[5:16]** |
+
+**Observations:**
+- Same failure mode as exp-42: car stalled mid-lap at ~32 s, damage 0, car halted in reverse on track edge.
+- ±12° sensors (t[4:17]) over-read clearance on a tight section not covered by zone caps, allowing the car to
+  build to 189 km/h before a short `ahead` reading triggered emergency braking to near-zero. Yaw-recovery
+  locked the car.
+- t[5:16] (±7°) is confirmed as the maximum safe cone width. t[4:17] (±12°) is the ceiling.
+- **exp-44 (t[5:16], 228 km/h, 01:48:59) is the confirmed best stable configuration.**
+- exp-44 code promoted to `snakeoil3_v1.py` as the new safe baseline.
+
+---
+
+### v1 baseline confirmation runs — exp-44 code in snakeoil3_v1.py
+
+**File:** `snakeoil3_v1.py` (exp-44 code, no changes)
+**Track:** Corkscrew
+
+Ran `snakeoil3_v1.py` twice to confirm the promoted baseline is clean before further experiments in v2.
+
+| Metric | exp-44 (v2) | v1 run 1 | v1 run 2 |
+|---|---|---|---|
+| Lap time | 01:48:59 | 01:50:52 ✅ | **01:48:82** ✅ |
+| Damage | 0 | 0 ✅ | **0** ✅ |
+| Top speed | 228 km/h | 228 km/h ✅ | **228 km/h** ✅ |
+| Pit stops | 0 | 0 ✅ | **0** ✅ |
+
+**exp-44 baseline confirmed stable in v1.** Two consecutive clean laps; run 2 (01:48:82) is within 0.23 s of the original v2 result (01:48:59) — essentially identical. Top speed locked at 228 km/h across both runs. This is the confirmed reference performance floor for all future experiments in v2.

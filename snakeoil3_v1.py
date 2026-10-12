@@ -527,8 +527,9 @@ def destringify(s):
             return [destringify(i) for i in s]
 
 # ============================================================
-# snakeoil3_v1.py — SAFE BASELINE  (exp-39)
-# Promoted from snakeoil3_v2.py after clean lap: 01:54:60, damage 0, 205 km/h
+# snakeoil3_v1.py — SAFE BASELINE  (exp-44)
+# Promoted from snakeoil3_v2.py after clean lap: 01:48:59, damage 0, 228 km/h
+# v1 confirmation run: 01:50:52, damage 0, 228 km/h (Corkscrew)
 # Original reference (never modified): snakeoil3_gym.py
 # Full experiment history:             CHANGELOG.md
 # Do NOT tune this file during experiments.
@@ -538,22 +539,22 @@ def destringify(s):
 def drive_example(c):
     S, R = c.S.d, c.R.d
 
-    # --- Forward clearance (wide-cone sensor, exp-37/39) ---
+    # --- Forward clearance (wide-cone sensor, exp-44 — Corkscrew only) ---
     # Sensor angle map:
     # idx:  0    1    2    3   4    5     6     7    8     9   10    11    12    13   14  15   16   17   18
     # deg: -45 -19  -12   -7  -4  -2.5  -1.7  -1  -0.5   0  +0.5  +1  +1.7  +2.5  +4  +7  +12  +19  +45
     t = S['track']
-    ahead = max(max(t[6:15]), 0.0)   # ±4° wide cone; floor at 0
+    ahead = max(max(t[5:16]), 0.0)   # exp-44: ±7° cone (Corkscrew only — relies on zone caps below)
 
     # --- Steering ---
     R['steer']  = S['angle'] * 5 / PI
     R['steer'] -= S['trackPos'] * 0.40
 
     # --- Lookahead braking + proportional throttle ---
-    decel_g      = 16.0
+    decel_g      = 17.0
     safe_ms      = (2.0 * decel_g * ahead) ** 0.5
     safe_kmh     = safe_ms * 3.6
-    target_speed = clip(safe_kmh * 0.89, 10, 250)
+    target_speed = clip(safe_kmh * 0.97, 10, 250)
 
     # --- Zone-specific speed caps ---
     # Three corners where the wide-cone sensor over-reads clearance on sweeping

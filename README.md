@@ -10,14 +10,14 @@ This project develops an autonomous racing controller for the **TORCS** (The Ope
 
 | Metric | Value |
 |--------|-------|
-| **Best lap time** | **01:54:60** (exp-39, run 1) |
-| **Confirmed baseline** | **01:54:66** (exp-39, run 4 — 4 consecutive clean laps) |
-| **Lap time range** | 01:54:60 – 01:55:72 across 4 runs (mean ~01:54:90) |
-| **Damage** | **0** on all 4 runs |
-| **Top speed** | **206 km/h** |
+| **Best lap time** | **01:48:59** (exp-44, v2) |
+| **v1 baseline best** | **01:48:82** (exp-44 in v1, run 2 of 2) |
+| **v1 lap time range** | 01:48:82 – 01:50:52 (2 confirmation runs) |
+| **Damage** | **0** on all confirmation runs |
+| **Top speed** | **228 km/h** |
 | **Track** | Corkscrew (TORCS built-in) |
-| **Experiments completed** | 39 |
-| **Telemetry rows logged** | ~915k rows (12 runs) · **3.9 MB** (`lap_data.csv.gz`) |
+| **Experiments completed** | 45 |
+| **Current baseline** | exp-44 (`snakeoil3_v1.py`) |
 
 ---
 
@@ -27,11 +27,11 @@ This project develops an autonomous racing controller for the **TORCS** (The Ope
 gym_torcs/
 │
 ├── snakeoil3_gym.py          # Original reference — NEVER modified
-├── snakeoil3_v1.py           # Safe baseline (currently exp-39, promoted after clean lap)
+├── snakeoil3_v1.py           # Safe baseline (exp-44, promoted after clean lap)
 ├── snakeoil3_v2.py           # Working copy — all experiments run here
 │
 ├── CHANGELOG.md              # Full experiment log: change / result / kept?
-├── lap_data.csv.gz           # Per-step telemetry (~50 Hz, 11 best runs, gzip-compressed)
+├── lap_data.csv.gz           # Per-step telemetry (~50 Hz, gzip-compressed)
 ├── lap_summary.csv           # Per-lap summary (time, damage, max speed)
 │
 ├── find_corners.py           # Offline telemetry analysis tool
@@ -73,29 +73,44 @@ The controller runs a **single `drive_example()` function** called at every simu
 | `wheelSpinVel[0..3]` | Wheel angular velocity (traction control) |
 | `distFromStart` | Distance from lap start (metres) — used for zone detection |
 
+### Sensor angle map
+
+The 19 track sensors are configured at non-uniform angles to give fine resolution dead ahead and coarser coverage toward the edges:
+
+```
+idx:  0    1    2    3   4    5     6     7    8     9   10    11    12    13   14  15   16   17   18
+deg: -45 -19  -12   -7  -4  -2.5  -1.7  -1  -0.5   0  +0.5  +1  +1.7  +2.5  +4  +7  +12  +19  +45
+```
+
+Index 9 (0°) is the dead-ahead sensor (`forward_track` in telemetry).
+
 ### Control outputs
 
 `steer` (−1 to +1), `accel` (0 to 1), `brake` (0 to 1), `gear` (1–7), `clutch`, `meta`
 
-### Control logic (exp-39 baseline)
+### Control logic (exp-44 baseline)
 
 ```
 1. Forward clearance
-   ahead = max(track[6:15], 0)          # wide ±4° cone
+   t    = track[0..18]
+   ahead = max(t[5:16], 0)              # ±7° wide cone (indices 5–15)
+                                         # exp-44: wider than ±4° used in exp-39–43
+                                         # raises safe_kmh on gentle sweepers
 
 2. Steering
    steer  = angle × 5/π                 # yaw correction
-   steer -= trackPos × 0.40             # centre-pull
+   steer -= trackPos × 0.40             # centre-pull (gain raised in exp-35)
    steer -= trackPos × 0.15             # extra pull in Corkscrew run-in (dist 2290–2450 m)
 
 3. Lookahead speed target
-   safe_kmh     = √(2 × 16 × ahead) × 3.6
-   target_speed = clip(safe_kmh × 0.89, 10, 250)
+   safe_kmh     = √(2 × 17 × ahead) × 3.6     # decel_g=17 (raised in exp-41)
+   target_speed = clip(safe_kmh × 0.97, 10, 250)  # margin=0.97 (raised in exp-43)
 
-4. Zone-specific hard caps (three corners where wide-cone over-reads clearance)
+4. Zone-specific hard caps (corners where wide-cone over-reads clearance)
    Zone A  dist 2305–2450 m : cap 40 km/h   (Corkscrew apex)
    Zone C  dist 2450–2510 m : cap 55 km/h   (Corkscrew exit chicane)
    Zone B  dist 3200–3340 m : cap 60 km/h   (back-section hairpin)
+   in_cap flag set inside each zone block
 
 5. Throttle / brake
    if speed ≤ target    → throttle (full when >10% below target, proportional in final band)
@@ -103,19 +118,24 @@ The controller runs a **single `drive_example()` function** called at every simu
    elif speed ≤ safe    → coast
    else                 → brake ∝ (speed − safe) / 35
 
-6. Traction control
+6. Low-speed launch boost
+   if speedX < 10 → accel += 1 / (speedX + 0.1)
+
+7. Traction control
    if rear_spin − front_spin > 5 → accel −= 0.2
 
-7. Automatic gearbox (7-gear car1-ow1)
+8. Automatic gearbox (7-gear car1-ow1)
    2nd >30 / 3rd >55 / 4th >80 / 5th >110 / 6th >150 / 7th >175 km/h
 
-8. Wall-escape recovery  (fires only when genuinely off-road: trackPos > ±1.0)
+9. Wall-escape recovery  (fires only when genuinely off-road: trackPos > ±1.0,
+                          or track[9] < 2 m AND trackPos > ±0.90; speed < 15 km/h)
    gear = −1, accel = 0.5, steer = clip(−trackPos × 0.5, −0.7, 0.7)
 
-9. Post-recovery yaw realignment  (fires when back on-road but still yawed >0.3 rad)
-   crawl forward at accel = 0.3 and steer toward zero angle
-   if rolling backward first: brake to stop, then crawl
-   if no forward clearance: reverse until track[9] > 3 m
+10. Post-recovery yaw realignment  (fires when back on-road, speed < 15 km/h,
+                                    still yawed > 0.3 rad)
+    if rolling backward (speedX < −1): brake=0.8 to stop first
+    if track[9] > 3 m:  crawl forward at accel=0.3, steer = angle × 3/π
+    if track[9] ≤ 3 m:  reverse at accel=0.4 until clearance > 3 m, then crawl
 ```
 
 ---
@@ -125,10 +145,11 @@ The controller runs a **single `drive_example()` function** called at every simu
 ```
 1. Run snakeoil3_v1.py       → confirm baseline still produces a clean lap
 2. In snakeoil3_v2.py        → make ONE change in drive_example()
-                             → update EXP_TAG  (e.g. "exp-40-margin090")
-3. python3 snakeoil3_v2.py   → telemetry auto-writes to lap_data.csv / lap_summary.csv
+                             → update EXP_TAG  (e.g. "exp-46-...")
+3. python3 snakeoil3_v2.py   → telemetry auto-writes to lap_data.csv.gz / lap_summary.csv
 4. Record in CHANGELOG.md    → hypothesis / change / prediction / result / kept?
 5a. If clean                 → copy drive_example + main loop to snakeoil3_v1.py
+                             → update snakeoil3_v1.py header comment
 5b. If crash / DNF           → revert drive_example to v1 baseline, reset EXP_TAG
 ```
 
@@ -145,22 +166,43 @@ The controller runs a **single `drive_example()` function** called at every simu
 | exp-9 | `decel_g=15`, margin 9% | 2:01:99 | 0 | ✅ Sub-2:02 clean |
 | exp-15 | Off-track threshold + steer direction fixed | 2:21:24 | 0 | ✅ Recovery logic working |
 | exp-20 | Off-track guard raised to `trackPos > 1.0` | 2:25:58 | 0 | ✅ False-recovery eliminated |
-| exp-21 | Zone A cap 40 km/h (Corkscrew) | 2:05:54 | 0 | ✅ Corkscrew solved |
+| exp-21 | Zone A cap 40 km/h (Corkscrew apex) | 2:05:54 | 0 | ✅ Corkscrew solved |
 | exp-28 | Recovery steer arc capped ±0.7 | 2:21:62 | 0 | ✅ No more spin in recovery |
-| exp-29 | Yaw-gate backward-roll brake | 2:04:70 | 0 | ✅ Recovery 24s → 5 steps |
-| exp-30 | Speed guard on yaw-recovery (`<15 km/h`) | **1:55:24** | 0 | ✅ **Sub-1:56** |
+| exp-29 | Yaw-gate backward-roll brake | 2:04:70 | 0 | ✅ Recovery 24 s → 5 steps |
+| exp-30 | Speed guard on yaw-recovery (`<15 km/h`) | 1:55:24 | 0 | ✅ Sub-1:56 |
 | exp-33 | Active braking in cap zones + correct zone sizes | 1:57:99 | 0 | ✅ Cap zones braking correctly |
-| exp-35 | `trackPos` steer gain 0.25 → 0.40 | DNF | 2 | ❌ Zone A exit spin |
 | exp-37 | Zone C cap 55 km/h (exit chicane) | DNF (max_steps) | 0 | ✅ All zones survive — loop bug found |
-| **exp-39** | **Restore all caps + fix shutdown loop** | **1:54:60** | **0** | ✅ **New best — confirmed ×2** |
+| **exp-39** | **Restore all caps + fix shutdown loop** | **1:54:60** | **0** | ✅ **4 consecutive clean laps** |
+| exp-40 | Margin 0.89 → 0.92 | 1:53:66 | 0 | ✅ +6 km/h, new fastest |
+| exp-41 | `decel_g` 16 → 17, margin 0.92 → 0.95 | 1:51:18 | 0 | ✅ 216 km/h, new fastest |
+| exp-42 | `decel_g` 17 → 18, margin 0.95 → 0.97 | DNF (~39 s) | 0 | ❌ `decel_g=18` stalls mid-lap |
+| exp-43 | Revert `decel_g` 18 → 17; keep margin 0.97 | 1:50:61 | 0 | ✅ 218 km/h, `decel_g=18` confirmed ceiling |
+| **exp-44** | **Widen cone t[6:15] → t[5:16] (±7°)** | **1:48:59** | **0** | ✅ **228 km/h — new best by 2 s** |
+| exp-45 | Widen cone t[5:16] → t[4:17] (±12°) | DNF (~32 s) | 0 | ❌ ±12° over-reads on tight sections |
 
 Full history with root-cause analysis for every DNF is in [`CHANGELOG.md`](CHANGELOG.md).
 
 ---
 
+## Speed Progression
+
+| Exp | Top speed | Lap time | Key change |
+|-----|-----------|----------|------------|
+| exp-4 | 118 km/h | 2:19:52 | First braking logic |
+| exp-6 | 182 km/h | 2:14:30 | `decel_g=20`, max sensor, full throttle |
+| exp-9 | 197 km/h | 2:01:99 | Conservative recovery of safe settings |
+| exp-30 | 207 km/h | 1:55:24 | Speed guard on recovery |
+| exp-39 | 205 km/h | 1:54:60 | Caps restored + loop fix |
+| exp-40 | 210 km/h | 1:53:66 | Margin 0.92 |
+| exp-41 | 216 km/h | 1:51:18 | `decel_g=17` + margin 0.95 |
+| exp-43 | 218 km/h | 1:50:61 | Margin 0.97 |
+| **exp-44** | **228 km/h** | **1:48:59** | **Wider sensor cone ±7°** |
+
+---
+
 ## Telemetry System
 
-`snakeoil3_v2.py` includes a production-grade `Recorder` class that runs automatically on every execution. It produces two append-only CSV files:
+`snakeoil3_v2.py` includes a production-grade `Recorder` class that runs automatically on every execution. It produces two append-only files:
 
 ### `lap_data.csv.gz` — per-step (~50 Hz), gzip-compressed
 
@@ -168,10 +210,12 @@ Full history with root-cause analysis for every DNF is in [`CHANGELOG.md`](CHANG
 |--------|-------------|
 | `run_id` | UTC timestamp + random hex — unique per process start |
 | `experiment_id` | `EXP_TAG` value set at top of file |
-| `code_sha256` | SHA-256 of the script — links every row to exact code version |
 | `step` | Simulator tick counter |
+| `elapsed_time_s` | Wall-clock seconds since process start |
 | `distFromStart` | Position on lap (m) |
 | `distRaced` | Total distance driven this session (m) |
+| `curLapTime` | Current lap timer from TORCS (s) |
+| `lastLapTime` | Completed lap time from TORCS (s) |
 | `speedX` | Forward speed (km/h) |
 | `trackPos` | Lateral position (−1 to +1, >±1 = off-road) |
 | `angle` | Heading error (rad) |
@@ -184,11 +228,14 @@ Full history with root-cause analysis for every DNF is in [`CHANGELOG.md`](CHANG
 
 | Column | Description |
 |--------|-------------|
+| `run_id` | Links to `lap_data.csv.gz` rows |
+| `experiment_id` | `EXP_TAG` |
+| `code_sha256` | SHA-256 of the script — links every lap to exact code version |
 | `lap_time` | Authoritative lap time from `lastLapTime` sensor |
 | `status` | `completed` / `partial` / `interrupted` |
 | `damage_start / damage_end` | Damage at lap start and end |
 | `max_speed` | Peak `speedX` during the lap |
-| `completion_reason` | `finish_line_crossing` / `max_steps_or_interrupt` / `simulator_reset` |
+| `completion_reason` | `finish_line_crossing` / `user_interrupt` / `simulator_reset` |
 
 > **Note:** The recorder detects lap crossings from `distFromStart` wrapping. When the car reverses near the finish line (Zone A recovery), `distRaced` is non-monotonic and the crossing is missed. The TORCS race-results screen is always the authoritative source for lap time.
 
@@ -217,23 +264,25 @@ python3 snakeoil3_v1.py
 python3 snakeoil3_v2.py
 ```
 
-Telemetry appends to `lap_data.csv` and `lap_summary.csv` automatically. The process exits cleanly when TORCS sends `***shutdown***` at race end.
+Telemetry appends to `lap_data.csv.gz` and `lap_summary.csv` automatically. The process exits cleanly when TORCS sends `***shutdown***` at race end.
 
 ### Analyse a run
 
 ```bash
-python3 find_corners.py          # offline corner detection from lap_data.csv
+python3 find_corners.py          # offline corner detection from lap_data.csv.gz
 ```
 
 ---
 
 ## Key Design Decisions
 
-**Why no machine learning?** This project is the IBM Challenge submission — the goal is to demonstrate a complete, reproducible, instrumented engineering workflow. The car navigates a full lap in under 2 minutes with zero damage using only classical control and physics-based reasoning, with full telemetry traceability to exact code versions via SHA-256.
+**Why no machine learning?** This project is the IBM Challenge submission — the goal is to demonstrate a complete, reproducible, instrumented engineering workflow. The car navigates a full lap in under 1:49 with zero damage using only classical control and physics-based reasoning, with full telemetry traceability to exact code versions via SHA-256.
 
 **Why one variable at a time?** Compound changes make it impossible to attribute a result (improvement or crash) to a specific cause. Every crash in the experiment history was diagnosed by comparing the one changed variable against the clean baseline. See CHANGELOG entries exp-13 (4 changes → crash, root cause unclear) and exp-38 (dual sensor → top speed 209→173 km/h, immediately reverted).
 
-**Why hard zone caps instead of a better sensor?** exp-38 tested a dual-layer sensor (`straight_read` + `corner_warning`) as a principled alternative to zone caps. It reduced top speed from 209 to 173 km/h and still failed to prevent Corkscrew drift — the problem is geometric (the road curves faster than any dead-ahead sensor can see). The zone caps are the correct fix for that corner geometry.
+**Why hard zone caps instead of a better sensor?** exp-38 tested a dual-layer sensor (`straight_read` + `corner_warning`) as a principled alternative to zone caps. It reduced top speed from 209 to 173 km/h and still failed to prevent Corkscrew drift — the problem is geometric (the road curves faster than any dead-ahead sensor can see). The zone caps are the correct fix for that corner geometry. exp-45 confirmed that widening the cone beyond ±7° (to ±12°) over-reads clearance on tight off-cap sections and causes mid-lap stalls — ±7° is the confirmed safe ceiling for the cone width.
+
+**Why `decel_g=17` and not higher?** exp-42 (`decel_g=18`) and exp-45 (wider cone) both caused mid-lap stalls via the same mechanism: a brief low `ahead` reading triggers emergency braking to near-zero speed, and the yaw-recovery block locks the car. `decel_g=17` is the confirmed ceiling with the current sensor setup.
 
 ---
 

@@ -90,7 +90,7 @@ PI= 3.14159265359
 # EXPERIMENT LABEL — change before each new experiment run.
 # Appears in every row of lap_data.csv and lap_summary.csv.
 # Example: "exp-19-margin089"
-EXP_TAG = "exp-39-caps-restored"
+EXP_TAG = "exp-44-widercone-5to16"
 # ---------------------------------------------------------------------------
 
 data_size = 2**17
@@ -1017,7 +1017,53 @@ class Recorder:
 # ===========================================================================
 
 def drive_example(c):
-    '''Working-copy driver — exp-39.  See CHANGELOG.md for history.
+    '''Working-copy driver — exp-44 (restored).  See CHANGELOG.md for history.
+
+    exp-45 was reverted: t[4:17] (±12° cone) stalled mid-lap at 32 s
+    (same mode as exp-42 decel_g=18). ±12° sensors over-read clearance on
+    a tight off-cap section, caused emergency braking from 189 km/h → zero,
+    yaw-recovery locked the car. Reverted to exp-44 proven cone t[5:16].
+
+    exp-44 changes (vs exp-43):
+      Widen sensor cone t[6:15] → t[5:16] (±2.5°–±7° vs ±1.7°–±4°).
+      On clear straights all sensors read ~200 m so ahead is unchanged.
+      On gentle sweepers the wider sensors see further along the driving
+      line, raising safe_kmh and target_speed without touching decel_g or
+      margin — more straight-line speed with no braking-distance trade-off.
+      Zone caps (A/B/C) unchanged — distance-gated so sensor width irrelevant
+      at those corners.
+      decel_g=17, margin=0.97 unchanged from exp-43.
+
+    exp-43 changes (vs exp-42):
+      Revert decel_g 18 → 17: exp-42 stalled mid-lap at 39 s (top speed 189,
+      damage 0). decel_g=18 fires brake trigger so late that a brief low-ahead
+      reading (kink/apex) causes full emergency braking from 189 km/h → near
+      zero; yaw-recovery then locks the car. decel_g=17 was clean in exp-41.
+      margin 0.97 KEPT: isolates decel_g as the failure cause.
+      Zone caps (A/B/C) unchanged.
+
+    exp-42 changes (vs exp-41):
+      decel_g 17 → 18: brake trigger fires even later → more time at full
+      throttle on straights.
+      margin 0.95 → 0.97: target speed nearly at sensor ceiling.
+      Zone caps (A/B/C) unchanged — still guard all three problem corners.
+      Historical note: decel_g=18 DNF'd in exp-14, but that run had NO zone
+      caps and a broken recovery logic. Caps + working recovery make this safe.
+
+    exp-41 changes (vs exp-40):
+      decel_g 16 → 17: brake trigger fires later on straights → more time at
+      full throttle → higher top speed.
+      margin 0.92 → 0.95: target speed chases sensor ceiling more aggressively.
+      Both levers raise straight-line speed; zone caps (A/B/C) unchanged and
+      still guard the three problem corners.
+      Historical note: decel_g=17+margin=0.93 crashed in exp-13/14, but those
+      runs had NO zone caps. Caps are what make this combination safe to try.
+
+    exp-40 changes (vs exp-39):
+      Raise safety margin 0.89 → 0.92 to push top speed toward 220 km/h.
+      All zone caps (A/B/C), sensor, decel_g, and steering unchanged.
+      exp-13 ran margin 0.92 (among other changes) and observed 219 km/h;
+      this isolates that single lever for clean attribution.
 
     exp-39 changes (vs exp-38):
       Revert dual-sensor back to wide-cone (exp-37 sensor) — dual sensor was
@@ -1052,17 +1098,17 @@ def drive_example(c):
     # idx:  0    1    2    3   4    5     6     7    8     9   10    11    12    13   14  15   16   17   18
     # deg: -45 -19  -12   -7  -4  -2.5  -1.7  -1  -0.5   0  +0.5  +1  +1.7  +2.5  +4  +7  +12  +19  +45
     t = S['track']
-    ahead = max(max(t[6:15]), 0.0)   # ±4° wide cone; floor at 0
+    ahead = max(max(t[5:16]), 0.0)   # exp-44: ±7° cone (exp-45 t[4:17] reverted)
 
     # --- Steering ---
     R['steer'] = S['angle'] * 5 / PI
     R['steer'] -= S['trackPos'] * 0.40
 
     # --- Lookahead braking + proportional throttle ---
-    decel_g      = 16.0
+    decel_g      = 17.0
     safe_ms      = (2.0 * decel_g * ahead) ** 0.5
     safe_kmh     = safe_ms * 3.6
-    target_speed = clip(safe_kmh * 0.89, 10, 250)
+    target_speed = clip(safe_kmh * 0.97, 10, 250)
 
     # --- Zone-specific speed caps ---
     # Three corners where the wide-cone sensor over-reads clearance (sweeping curves
