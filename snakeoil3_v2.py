@@ -90,7 +90,7 @@ PI= 3.14159265359
 # EXPERIMENT LABEL — change before each new experiment run.
 # Appears in every row of lap_data.csv and lap_summary.csv.
 # Example: "exp-19-margin089"
-EXP_TAG = "exp-44-widercone-5to16"
+EXP_TAG = "exp-57-zoneD-150kmh"
 # ---------------------------------------------------------------------------
 
 data_size = 2**17
@@ -1017,7 +1017,15 @@ class Recorder:
 # ===========================================================================
 
 def drive_example(c):
-    '''Working-copy driver — exp-44 (restored).  See CHANGELOG.md for history.
+    '''Working-copy driver — exp-44 (restored after exp-46 regression).  See CHANGELOG.md.
+
+    exp-46 REVERTED: t[4:17] + Zone D (660–760 m, 100 km/h) completed the lap
+    (0 damage) but regressed to 01:55:76 / 202 km/h vs exp-44's 01:48:59 / 228 km/h.
+    Root cause: t[4] and t[16] (±12° sensors) persistently read ~8.5 m throughout
+    much of the lap due to trackside kerbs/walls at extreme angles. max(t[4:17])
+    collapses to that floor on the main straight, cutting safe_kmh to ~49 km/h and
+    causing repeated hard braking. The ±12° cone is more conservative than ±7°
+    across most of the lap — not less. Reverted to exp-44 proven cone t[5:16].
 
     exp-45 was reverted: t[4:17] (±12° cone) stalled mid-lap at 32 s
     (same mode as exp-42 decel_g=18). ±12° sensors over-read clearance on
@@ -1098,7 +1106,7 @@ def drive_example(c):
     # idx:  0    1    2    3   4    5     6     7    8     9   10    11    12    13   14  15   16   17   18
     # deg: -45 -19  -12   -7  -4  -2.5  -1.7  -1  -0.5   0  +0.5  +1  +1.7  +2.5  +4  +7  +12  +19  +45
     t = S['track']
-    ahead = max(max(t[5:16]), 0.0)   # exp-44: ±7° cone (exp-45 t[4:17] reverted)
+    ahead = max(max(t[5:16]), 0.0)   # exp-44: ±7° cone (exp-45/46 t[4:17] reverted)
 
     # --- Steering ---
     R['steer'] = S['angle'] * 5 / PI
@@ -1123,6 +1131,9 @@ def drive_example(c):
         R['steer'] -= S['trackPos'] * 0.15
 
     in_cap = False
+    if 660.0 <= dist <= 760.0:           # Zone D — right-hand bend (wider cone over-reads here)
+        target_speed = min(target_speed, 150.0)
+        in_cap = True
     if 2305.0 <= dist < 2450.0:          # Zone A — Corkscrew apex
         target_speed = min(target_speed, 40.0)
         in_cap = True

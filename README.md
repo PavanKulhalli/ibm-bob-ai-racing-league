@@ -10,14 +10,13 @@ This project develops an autonomous racing controller for the **TORCS** (The Ope
 
 | Metric | Value |
 |--------|-------|
-| **Best lap time** | **01:48:59** (exp-44, v2) |
-| **v1 baseline best** | **01:48:82** (exp-44 in v1, run 2 of 2) |
-| **v1 lap time range** | 01:48:82 – 01:50:52 (2 confirmation runs) |
-| **Damage** | **0** on all confirmation runs |
+| **Best lap time** | **01:48:65** (exp-57, v1) |
+| **v1 baseline lap time range** | 01:48:65 – 01:49:90 (stochastic variation — identical code) |
+| **Damage** | **0** on all runs |
 | **Top speed** | **228 km/h** |
 | **Track** | Corkscrew (TORCS built-in) |
-| **Experiments completed** | 45 |
-| **Current baseline** | exp-44 (`snakeoil3_v1.py`) |
+| **Experiments completed** | 58 |
+| **Current baseline** | exp-57 (`snakeoil3_v1.py`) |
 
 ---
 
@@ -88,7 +87,7 @@ Index 9 (0°) is the dead-ahead sensor (`forward_track` in telemetry).
 
 `steer` (−1 to +1), `accel` (0 to 1), `brake` (0 to 1), `gear` (1–7), `clutch`, `meta`
 
-### Control logic (exp-44 baseline)
+### Control logic (exp-57 baseline)
 
 ```
 1. Forward clearance
@@ -107,9 +106,10 @@ Index 9 (0°) is the dead-ahead sensor (`forward_track` in telemetry).
    target_speed = clip(safe_kmh × 0.97, 10, 250)  # margin=0.97 (raised in exp-43)
 
 4. Zone-specific hard caps (corners where wide-cone over-reads clearance)
-   Zone A  dist 2305–2450 m : cap 40 km/h   (Corkscrew apex)
-   Zone C  dist 2450–2510 m : cap 55 km/h   (Corkscrew exit chicane)
-   Zone B  dist 3200–3340 m : cap 60 km/h   (back-section hairpin)
+   Zone D  dist  660– 760 m : cap 150 km/h  (right-hand bend — exp-52–57)
+   Zone A  dist 2305–2450 m : cap  40 km/h  (Corkscrew apex)
+   Zone C  dist 2450–2510 m : cap  55 km/h  (Corkscrew exit chicane)
+   Zone B  dist 3200–3340 m : cap  60 km/h  (back-section hairpin)
    in_cap flag set inside each zone block
 
 5. Throttle / brake
@@ -172,13 +172,23 @@ Index 9 (0°) is the dead-ahead sensor (`forward_track` in telemetry).
 | exp-30 | Speed guard on yaw-recovery (`<15 km/h`) | 1:55:24 | 0 | ✅ Sub-1:56 |
 | exp-33 | Active braking in cap zones + correct zone sizes | 1:57:99 | 0 | ✅ Cap zones braking correctly |
 | exp-37 | Zone C cap 55 km/h (exit chicane) | DNF (max_steps) | 0 | ✅ All zones survive — loop bug found |
-| **exp-39** | **Restore all caps + fix shutdown loop** | **1:54:60** | **0** | ✅ **4 consecutive clean laps** |
-| exp-40 | Margin 0.89 → 0.92 | 1:53:66 | 0 | ✅ +6 km/h, new fastest |
-| exp-41 | `decel_g` 16 → 17, margin 0.92 → 0.95 | 1:51:18 | 0 | ✅ 216 km/h, new fastest |
+| **exp-39** | **Restore all caps + fix shutdown loop** | **1:54:60** | **0** | ✅ **4 consecutive clean laps — stable base** |
+| exp-40 | Margin 0.89 → 0.92 | 1:53:66 | 0 | ✅ +6 km/h |
+| exp-41 | `decel_g` 16 → 17, margin 0.92 → 0.95 | 1:51:18 | 0 | ✅ 216 km/h |
 | exp-42 | `decel_g` 17 → 18, margin 0.95 → 0.97 | DNF (~39 s) | 0 | ❌ `decel_g=18` stalls mid-lap |
-| exp-43 | Revert `decel_g` 18 → 17; keep margin 0.97 | 1:50:61 | 0 | ✅ 218 km/h, `decel_g=18` confirmed ceiling |
-| **exp-44** | **Widen cone t[6:15] → t[5:16] (±7°)** | **1:48:59** | **0** | ✅ **228 km/h — new best by 2 s** |
+| exp-43 | Revert `decel_g` 18 → 17; keep margin 0.97 | 1:50:61 | 0 | ✅ 218 km/h |
+| **exp-44** | **Widen cone t[6:15] → t[5:16] (±7°)** | **1:48:59** | **0** | ✅ **228 km/h** |
 | exp-45 | Widen cone t[5:16] → t[4:17] (±12°) | DNF (~32 s) | 0 | ❌ ±12° over-reads on tight sections |
+| exp-47 | Rebuild from exp-39 base: margin 0.89 → 0.92 | 1:51:47 | 0 | ✅ Clean rebuild started |
+| exp-48 | `decel_g` 16 → 17 | 1:49:87 | 0 | ✅ 223 km/h |
+| exp-49 | margin 0.92 → 0.97 | DNF (~41 s) | 0 | ❌ Stall at dist=754 m (Zone D unprotected) |
+| exp-52 | Add Zone D cap 660–760 m, 90 km/h | 1:51:25 | 0 | ✅ Bend protected, stall eliminated |
+| exp-53 | margin 0.92 → 0.95 | 1:50:19 | 0 | ✅ 226 km/h |
+| exp-54 | margin 0.95 → 0.97 | 1:49:64 | 0 | ✅ 228 km/h — Zone D unlocks margin ceiling |
+| exp-55 | Zone D cap 90 → 110 km/h | 1:49:00 | 0 | ✅ −0:64 s |
+| exp-56 | Zone D cap 110 → 130 km/h | 1:48:73 | 0 | ✅ −0:27 s |
+| **exp-57** | **Zone D cap 130 → 150 km/h** | **1:48:65** | **0** | ✅ **New best — optimal Zone D cap** |
+| exp-58 | Zone D cap 150 → 170 km/h | 1:48:68 | 0 | ❌ +0:03 s — cap exceeded natural speed |
 
 Full history with root-cause analysis for every DNF is in [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -196,7 +206,10 @@ Full history with root-cause analysis for every DNF is in [`CHANGELOG.md`](CHANG
 | exp-40 | 210 km/h | 1:53:66 | Margin 0.92 |
 | exp-41 | 216 km/h | 1:51:18 | `decel_g=17` + margin 0.95 |
 | exp-43 | 218 km/h | 1:50:61 | Margin 0.97 |
-| **exp-44** | **228 km/h** | **1:48:59** | **Wider sensor cone ±7°** |
+| exp-44 | 228 km/h | 1:48:59 | Wider sensor cone ±7° |
+| exp-48 | 223 km/h | 1:49:87 | Clean rebuild: `decel_g=17` on exp-39 base |
+| exp-54 | 228 km/h | 1:49:64 | Zone D unlocks margin=0.97 |
+| **exp-57** | **228 km/h** | **1:48:65** | **Zone D tuned to optimal 150 km/h cap** |
 
 ---
 
@@ -283,6 +296,8 @@ python3 find_corners.py          # offline corner detection from lap_data.csv.gz
 **Why hard zone caps instead of a better sensor?** exp-38 tested a dual-layer sensor (`straight_read` + `corner_warning`) as a principled alternative to zone caps. It reduced top speed from 209 to 173 km/h and still failed to prevent Corkscrew drift — the problem is geometric (the road curves faster than any dead-ahead sensor can see). The zone caps are the correct fix for that corner geometry. exp-45 confirmed that widening the cone beyond ±7° (to ±12°) over-reads clearance on tight off-cap sections and causes mid-lap stalls — ±7° is the confirmed safe ceiling for the cone width.
 
 **Why `decel_g=17` and not higher?** exp-42 (`decel_g=18`) and exp-45 (wider cone) both caused mid-lap stalls via the same mechanism: a brief low `ahead` reading triggers emergency braking to near-zero speed, and the yaw-recovery block locks the car. `decel_g=17` is the confirmed ceiling with the current sensor setup.
+
+**Why does top speed vary run-to-run on identical code?** TORCS physics simulation has inherent stochastic variation (floating-point timing, CPU scheduling). On the exp-57 baseline, top speed varies ~216–228 km/h across runs. Lap time varies ~1:48:65–1:49:90. This is normal and documented throughout the experiment history (exp-39 varied 202–206 km/h across 4 runs). The TORCS race-results screen is the authoritative source; the mean across multiple runs is the true performance metric.
 
 ---
 

@@ -527,9 +527,9 @@ def destringify(s):
             return [destringify(i) for i in s]
 
 # ============================================================
-# snakeoil3_v1.py — SAFE BASELINE  (exp-44)
-# Promoted from snakeoil3_v2.py after clean lap: 01:48:59, damage 0, 228 km/h
-# v1 confirmation run: 01:50:52, damage 0, 228 km/h (Corkscrew)
+# snakeoil3_v1.py — SAFE BASELINE  (exp-57)
+# exp-57: 01:48:65, damage 0, 228 km/h (Corkscrew)
+# Promoted from snakeoil3_v2.py after clean lap.
 # Original reference (never modified): snakeoil3_gym.py
 # Full experiment history:             CHANGELOG.md
 # Do NOT tune this file during experiments.
@@ -539,12 +539,12 @@ def destringify(s):
 def drive_example(c):
     S, R = c.S.d, c.R.d
 
-    # --- Forward clearance (wide-cone sensor, exp-44 — Corkscrew only) ---
+    # --- Forward clearance (wide-cone sensor, exp-44 cone) ---
     # Sensor angle map:
     # idx:  0    1    2    3   4    5     6     7    8     9   10    11    12    13   14  15   16   17   18
     # deg: -45 -19  -12   -7  -4  -2.5  -1.7  -1  -0.5   0  +0.5  +1  +1.7  +2.5  +4  +7  +12  +19  +45
     t = S['track']
-    ahead = max(max(t[5:16]), 0.0)   # exp-44: ±7° cone (Corkscrew only — relies on zone caps below)
+    ahead = max(max(t[5:16]), 0.0)   # exp-44: ±7° cone
 
     # --- Steering ---
     R['steer']  = S['angle'] * 5 / PI
@@ -557,7 +557,7 @@ def drive_example(c):
     target_speed = clip(safe_kmh * 0.97, 10, 250)
 
     # --- Zone-specific speed caps ---
-    # Three corners where the wide-cone sensor over-reads clearance on sweeping
+    # Four corners where the wide-cone sensor over-reads clearance on sweeping
     # curves.  in_cap switches to active braking so the car reaches cap speed
     # before the danger geometry.
     dist = S.get('distFromStart', 0.0) or 0.0
@@ -567,6 +567,9 @@ def drive_example(c):
         R['steer'] -= S['trackPos'] * 0.15
 
     in_cap = False
+    if 660.0 <= dist <= 760.0:           # Zone D — right-hand bend (wider cone over-reads here)
+        target_speed = min(target_speed, 150.0)
+        in_cap = True
     if 2305.0 <= dist < 2450.0:          # Zone A — Corkscrew apex
         target_speed = min(target_speed, 40.0)
         in_cap = True
